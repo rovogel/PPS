@@ -1,7 +1,12 @@
 #!/bin/bash
+
+function pause(){
+   read -p "Presione una tecla para continuar..."
+}
+
 echo -e "\e[37m...\e[0m"
 echo -e "\e[37m...\e[0m"
-echo -e "\e[37mScript para la instalacion del software UHD + GNURadio + RFNoC para ETTUS E-310\e[0m"
+echo -e "\e[37mScript para la generación e instalacion del software UHD + GNURadio + RFNoC\e[0m"
 echo -e "\e[37mVersión de UHD: UHD_4.0.0.rfnoc-devel\e[0m"
 echo -e "\e[37mVersión de GNURadio: v3.7.9.3\e[0m"
 echo -e "\e[37m...\e[0m"
@@ -23,7 +28,7 @@ ettus_no_rfnoc=0
 ettus_rfnoc=0
 d=0
 j=0
-ip="192.168.1.8"
+ip=192.168.1.8
 
 if [[ "$1" = "--help" || "$#" = "0" ]]
 	then
@@ -120,14 +125,35 @@ if [[ -d ~/ETTUS ]]
 			then
 				mkdir ~/ETTUS/src
 		fi
+
+		if [[ ! -d ~/ETTUS/build ]]
+			then
+				mkdir ~/ETTUS/build
+		fi
+
+		if [[ ! -d ~/ETTUS/remoto/  ]]
+			then
+				mkdir ~/ETTUS/remoto
+				mkdir ~/ETTUS/remoto/usr
+				mkdir ~/ETTUS/remoto/etc
+		fi
 	else
 		mkdir ~/ETTUS
 		mkdir ~/ETTUS/src
+		mkdir ~/ETTUS/build
+		mkdir ~/ETTUS/remoto
+		mkdir ~/ETTUS/remoto/usr
+		mkdir ~/ETTUS/remoto/etc
 fi
+
 echo
 echo -e "\e[36mEn el directorio $HOME :\e[0m"
 echo -e "\e[36m|+ ETTUS\e[0m"
 echo -e "\e[36m|||+ src\e[0m"
+echo -e "\e[36m|||+ build\e[0m"
+echo -e "\e[36m|||+ remoto\e[0m"
+echo -e "\e[36m|||||+ usr\e[0m"
+echo -e "\e[36m|||||+ etc\e[0m"
 echo
 
 #comprueba si existe la carpeta principal de construcción y las fuentes
@@ -223,13 +249,19 @@ if [[ -d ~/ETTUS/src/PPS/gr-ettus/build ]]
 		mkdir ~/ETTUS/src/PPS/gr-ettus/build
 fi
 
-exit
-
 #Descarga de toolchain y generacion de archivos segun la configuración elegida
 if [[ $pc_no_rfnoc!=0 || $pc_rfnoc!=0 || ettus_rfnoc!=0 || ettus_no_rfnoc!=0 ]]
 	then
 		if [[ $pc_no_rfnoc=1 && $pc_rfnoc=0 ]]
 			then
+
+				#Si existen archivos generados, se borran antes de una nueva contrucción
+				if [[ $(ls -l ~/ETTUS/build | grep -c "total 0") != 0 ]]
+					then
+						cd ~/ETTUS/build
+						rm -r *
+				fi
+
 				cd ~/ETTUS/src/PPS/uhd/host/build
 				cmake -DENABLE_E300=ON -DE300_FORCE_NETWORK=ON ..
 				make -j2
@@ -250,6 +282,14 @@ if [[ $pc_no_rfnoc!=0 || $pc_rfnoc!=0 || ettus_rfnoc!=0 || ettus_no_rfnoc!=0 ]]
 
 		if [[ $pc_rfnoc=1 && $pc_no_rfnoc=0 ]]
 			then
+
+				#Si existen archivos generados, se borran antes de una nueva contrucción
+				if [[ $(ls -l ~/ETTUS/build | grep -c "total 0") != 0 ]]
+					then
+						cd ~/ETTUS/build
+						rm -r *
+				fi
+
 				cd ~/ETTUS/src/PPS/uhd-rfnoc/host/build
 				cmake -DENABLE_E300=ON -DE300_FORCE_NETWORK=ON ..
 				make -j2
@@ -276,17 +316,37 @@ if [[ $pc_no_rfnoc!=0 || $pc_rfnoc!=0 || ettus_rfnoc!=0 || ettus_no_rfnoc!=0 ]]
 
 		if [[ $ettus_no_rfnoc=1 && $ettus_rfnoc=0 ]]
 			then
+
+				#Si existen archivos generados, se borran antes de una nueva contrucción
+				if [[ $(ls -l ~/ETTUS/build | grep -c "total 0") != 0 ]]
+					then
+						cd ~/ETTUS/build
+						rm -r *
+				fi
+
+				#Montamos el directorio /usr de la ettus en nuestro directorio principal
+				sshfs root@$ip:/usr ~/ETTUS/remoto/usr
+				sshfs root@$ip:/etc ~/ETTUS/remoto/etc
+
 				cd ~/ETTUS/src/PPS/uhd/host/build
 				cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=../host/cmake/Toolchains/oe-sdk_cross.cmake -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_DOXYGEN=False -DENABLE_E300=ON ..
 				make -j2
-				make install DESTDIR=~/ETTUS/root-ettus # instalamos en la placa
+				make install DESTDIR=~/ETTUS/build # instalamos en la placa
 				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi #instalamos pisando el toolchain
 
 				cd ~/ETTUS/src/PPS/gnuradio/build
 				cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchains/oe-sdk_cross.cmake -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_GR_VOCODER=OFF -DENABLE_GR_ATSC=OFF -DENABLE_GR_WXGUI=OFF -DENABLE_GR_DTV=OFF -DENABLE_DOXYGEN=False -DENABLE_GR_AUDIO=ON -DENABLE_GR_BLOCKS=ON -DENABLE_GR_DIGITAL=ON -DENABLE_GR_FEC=ON -DENABLE_GR_FFT=ON -DENABLE_GR_FILTER=ON -DENABLE_GR_QTGUI=ON -DENABLE_GR_UHD=ON -DENABLE_PYTHON=ON -DENABLE_VOLK=ON -DENABLE_GRC=ON ..
 				make -j2
-				make install DESTDIR=~/ETTUS/root-ettus
+				make install DESTDIR=~/ETTUS/build
 				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi
+
+				cd ~/ETTUS/build
+				cp -r usr/* ~/ETTUS/remoto/usr/
+				cp -r etc/* ~/ETTUS/remoto/etc/
+
+				fusermount -u ~/ETTUS/remoto/usr
+				fusermount -u ~/ETTUS/remoto/etc
+
 			else
 				echo
 				echo -e "\e[31mSolo se puede generar una version de UHD+GNURADIO+RFNoC por instalación!!\e[0m"
@@ -296,24 +356,54 @@ if [[ $pc_no_rfnoc!=0 || $pc_rfnoc!=0 || ettus_rfnoc!=0 || ettus_no_rfnoc!=0 ]]
 
 		if [[ $ettus_no_rfnoc=0 && $ettus_rfnoc=1 ]]
 			then
+
+				#Si existen archivos generados, se borran antes de una nueva contrucción
+				if [[ $(ls -l ~/ETTUS/build | grep -c "total 0") != 0 ]]
+					then
+						cd ~/ETTUS/build
+						rm -r *
+				fi
+
+				#Montamos el directorio /usr de la ettus en nuestro directorio principal
+				sshfs root@$ip:/usr ~/ETTUS/remoto/usr
+				sshfs root@$ip:/etc ~/ETTUS/remoto/etc
+
+				pause
+
 				cd ~/ETTUS/src/PPS/uhd-rfnoc/host/build
 				cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=../host/cmake/Toolchains/oe-sdk_cross.cmake -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_DOXYGEN=False -DENABLE_E300=ON ..
 				make -j2
-				make install DESTDIR=~/ETTUS/root-ettus # instalamos en la placa
+				make install DESTDIR=~/ETTUS/build # instalamos en la placa
 				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi #instalamos pisando el toolchain
+
+				pause
 
 				cd ~/ETTUS/src/PPS/gnuradio/build
 				cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchains/oe-sdk_cross.cmake -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_GR_VOCODER=OFF -DENABLE_GR_ATSC=OFF -DENABLE_GR_WXGUI=OFF -DENABLE_GR_DTV=OFF -DENABLE_DOXYGEN=False -DENABLE_GR_AUDIO=ON -DENABLE_GR_BLOCKS=ON -DENABLE_GR_DIGITAL=ON -DENABLE_GR_FEC=ON -DENABLE_GR_FFT=ON -DENABLE_GR_FILTER=ON -DENABLE_GR_QTGUI=ON -DENABLE_GR_UHD=ON -DENABLE_PYTHON=ON -DENABLE_VOLK=ON -DENABLE_GRC=ON ..
 				make -j2
-				make install DESTDIR=~/ETTUS/root-ettus
+				make install DESTDIR=~/ETTUS/build
 				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi
+
+				pause
 
 				cd ~/ETTUS/src/PPS/gr-ettus/build
 				cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=../../gnuradio/cmake/Toolchains/oe-sdk_cross.cmake -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_DOXYGEN=OFF ..
 				make -j2
-				make install DESTDIR=~/ETTUS/root-ettus
-				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi
+				make install DESTDIR=~/ETTUS/build
+#				make install DESTDIR=~/ETTUS/sysroots/armv7ahf-vfp-neon-oe-linux-gnueabi
 
+				pause
+
+				cd ~/ETTUS/build
+				cp -r usr/* ~/ETTUS/remoto/usr/
+				cp -r etc/* ~/ETTUS/remoto/etc/
+
+				pause
+
+				fusermount -u ~/ETTUS/remoto/usr
+				fusermount -u ~/ETTUS/remoto/etc
+
+				pause
 			else
 				echo
 				echo -e "\e[31mSolo se puede generar una version de UHD+GNURADIO+RFNoC por instalación!!\e[0m"
